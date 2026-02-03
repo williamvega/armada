@@ -112,6 +112,12 @@ func (srv *TestRunner) Run(ctx context.Context) (err error) {
 		return err
 	}
 
+	// If configured, preempt the submitted jobs immediately.
+	// Used to test job preemption.
+	if err = tryPreemptJobs(ctx, srv.testSpec, srv.apiConnectionDetails, jobIds); err != nil {
+		return err
+	}
+
 	// One channel for each system listening to events.
 	benchmarkCh := make(chan *api.EventMessage)
 	noActiveCh := make(chan *api.EventMessage)
@@ -216,6 +222,40 @@ func tryCancelJobs(ctx context.Context, testSpec *api.TestSpec, conn *client.Api
 			time.Sleep(3 * time.Second)
 			req.JobIds = jobIds
 			_, err := sc.CancelJobs(ctx, req)
+			if err != nil {
+				return errors.WithStack(err)
+			}
+			return nil
+		})
+	}
+	return nil
+}
+
+// tryPreemptJobs preempts submitted jobs if preemption is configured.
+func tryPreemptJobs(ctx context.Context, testSpec *api.TestSpec, conn *client.ApiConnectionDetails, jobIds []string) error {
+	req := &api.JobPreemptRequest{
+		Queue:    testSpec.GetQueue(),
+		JobSetId: testSpec.GetJobSetId(),
+		Reason:   testSpec.GetPreemptReason(),
+	}
+	switch {
+	case testSpec.Preempt == api.TestSpec_PREEMPT_BY_ID:
+		return client.WithSubmitClient(conn, func(sc api.SubmitClient) error {
+			time.Sleep(60 * time.Second)
+			for _, jobId := range jobIds {
+				req.JobIds = []string{jobId}
+				_, err := sc.PreemptJobs(ctx, req)
+				if err != nil {
+					return errors.WithStack(err)
+				}
+			}
+			return nil
+		})
+	case testSpec.Preempt == api.TestSpec_PREEMPT_BY_IDS:
+		return client.WithSubmitClient(conn, func(sc api.SubmitClient) error {
+			time.Sleep(60 * time.Second)
+			req.JobIds = jobIds
+			_, err := sc.PreemptJobs(ctx, req)
 			if err != nil {
 				return errors.WithStack(err)
 			}

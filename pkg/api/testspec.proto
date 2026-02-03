@@ -50,4 +50,13 @@ message TestSpec {
     string environment = 13;
     // Value of the target label set on exported Prometheus metrics.
     string target = 14;
+    // If the jobs in this spec. should be preempted.
+    enum Preempt {
+        PREEMPT_NO = 0; // Do not preempt jobs.
+        PREEMPT_BY_ID = 1; // Preempt jobs individually.
+        PREEMPT_BY_IDS = 2; // Preempt all jobs in the job set by multiple ids
+    }
+    Preempt preempt = 15;
+    // Reason for preemption. Used when preempt is set.
+    string preempt_reason = 16;
 }

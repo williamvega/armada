@@ -1,0 +1,30 @@
+numBatches: 1
+batchSize: 1
+queue: e2e-test-queue
+jobs:
+  - priority: 0
+    namespace: personal-anonymous
+    podSpec:
+      terminationGracePeriodSeconds: 0
+      restartPolicy: Never
+      containers:
+        - name: preempt-test
+          imagePullPolicy: IfNotPresent
+          image: alpine:3.20.0
+          args:
+            - "sleep"
+            - "100s"
+          resources:
+            limits:
+              memory: 25Mi
+              cpu: 100m
+            requests:
+              memory: 25Mi
+              cpu: 100m
+---
+preempt: PREEMPT_BY_ID
+preemptReason: "test preemption"
+timeout: "200s"
+expectedEvents:
+  - submitted:
+  - preempted:
