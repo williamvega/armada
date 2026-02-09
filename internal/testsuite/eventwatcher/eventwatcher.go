@@ -231,20 +231,15 @@ func isTerminalEvent(msg *api.EventMessage) bool {
 		return true
 	case *api.EventMessage_Cancelled:
 		return true
-	case *api.EventMessage_Preempted:
-		return true
 	}
 	return false
 }
 
 // ErrorOnNoActiveJobs returns an error if there are no active jobs.
-// Note: The scheduler intentionally sends both Preempted and Failed events for preempted jobs,
-// so we allow Failed to follow Preempted without erroring.
 func ErrorOnNoActiveJobs(parent context.Context, C chan *api.EventMessage, jobIds map[string]bool) error {
 	numActive := 0
 	numRemaining := len(jobIds)
 	exitedByJobId := make(map[string]bool)
-	preemptedJobIds := make(map[string]bool) // Track jobs that received Preempted event
 	for {
 		select {
 		case <-parent.Done():
@@ -262,12 +257,6 @@ func ErrorOnNoActiveJobs(parent context.Context, C chan *api.EventMessage, jobId
 				}
 				numActive--
 			} else if e := msg.GetFailed(); e != nil {
-				// Allow Failed after Preempted (scheduler sends both events for preempted jobs)
-				if _, wasPreempted := preemptedJobIds[e.JobId]; wasPreempted {
-					// Job was already counted as exited when Preempted event was received
-					// Don't decrement counters again
-					continue
-				}
 				if _, ok := exitedByJobId[e.JobId]; ok {
 					return errors.Errorf("received multiple terminal events for job %s", e.JobId)
 				}
@@ -279,24 +268,6 @@ func ErrorOnNoActiveJobs(parent context.Context, C chan *api.EventMessage, jobId
 			} else if e := msg.GetCancelled(); e != nil {
 				if _, ok := exitedByJobId[e.JobId]; ok {
 					return errors.Errorf("received multiple terminal events for job %s", e.JobId)
-				}
-				exitedByJobId[e.JobId] = true
-				if _, ok := jobIds[e.JobId]; ok {
-					numRemaining--
-				}
-				numActive--
-			} else if e := msg.GetPreempted(); e != nil {
-				// Mark as preempted first to allow Failed event (either before or after)
-				if _, alreadyPreempted := preemptedJobIds[e.JobId]; alreadyPreempted {
-					// Already processed this Preempted event
-					continue
-				}
-				preemptedJobIds[e.JobId] = true
-
-				// If we already saw Failed for this job, skip the counter updates
-				if _, ok := exitedByJobId[e.JobId]; ok {
-					// Failed came first, already counted
-					continue
 				}
 				exitedByJobId[e.JobId] = true
 				if _, ok := jobIds[e.JobId]; ok {

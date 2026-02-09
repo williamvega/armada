@@ -56,7 +56,7 @@ jobs:
               memory: 25Mi
               cpu: 100m
 ---
-timeout: "200s"
+timeout: "100s"
 expectedEvents:
   - submitted:
   - succeeded:
