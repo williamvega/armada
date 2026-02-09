@@ -32,3 +32,4 @@ timeout: "100s"
 expectedEvents:
   - submitted:
   - preempted:
+  - failed:
