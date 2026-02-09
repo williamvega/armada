@@ -286,11 +286,19 @@ func ErrorOnNoActiveJobs(parent context.Context, C chan *api.EventMessage, jobId
 				}
 				numActive--
 			} else if e := msg.GetPreempted(); e != nil {
+				// Mark as preempted first to allow Failed event (either before or after)
+				if _, alreadyPreempted := preemptedJobIds[e.JobId]; alreadyPreempted {
+					// Already processed this Preempted event
+					continue
+				}
+				preemptedJobIds[e.JobId] = true
+
+				// If we already saw Failed for this job, skip the counter updates
 				if _, ok := exitedByJobId[e.JobId]; ok {
-					return errors.Errorf("received multiple terminal events for job %s", e.JobId)
+					// Failed came first, already counted
+					continue
 				}
 				exitedByJobId[e.JobId] = true
-				preemptedJobIds[e.JobId] = true // Mark as preempted to allow subsequent Failed
 				if _, ok := jobIds[e.JobId]; ok {
 					numRemaining--
 				}
