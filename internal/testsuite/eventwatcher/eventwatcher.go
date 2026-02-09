@@ -239,6 +239,7 @@ func isTerminalEvent(msg *api.EventMessage) bool {
 }
 
 // ErrorOnNoActiveJobs returns an error if there are no active jobs.
+// Note: Preempted jobs receive both Preempted and Failed events, so we allow both without erroring.
 func ErrorOnNoActiveJobs(parent context.Context, C chan *api.EventMessage, jobIds map[string]bool) error {
 	numActive := 0
 	numRemaining := len(jobIds)
@@ -259,15 +260,26 @@ func ErrorOnNoActiveJobs(parent context.Context, C chan *api.EventMessage, jobId
 					numRemaining--
 				}
 				numActive--
+			} else if e := msg.GetPreempted(); e != nil {
+				// Preempted jobs will also receive a Failed event.
+				// Only count as exited once.
+				if _, ok := exitedByJobId[e.JobId]; !ok {
+					exitedByJobId[e.JobId] = true
+					if _, ok := jobIds[e.JobId]; ok {
+						numRemaining--
+					}
+					numActive--
+				}
 			} else if e := msg.GetFailed(); e != nil {
-				if _, ok := exitedByJobId[e.JobId]; ok {
-					return errors.Errorf("received multiple terminal events for job %s", e.JobId)
+				// Failed may come after Preempted for preempted jobs.
+				// Only count as exited once.
+				if _, ok := exitedByJobId[e.JobId]; !ok {
+					exitedByJobId[e.JobId] = true
+					if _, ok := jobIds[e.JobId]; ok {
+						numRemaining--
+					}
+					numActive--
 				}
-				exitedByJobId[e.JobId] = true
-				if _, ok := jobIds[e.JobId]; ok {
-					numRemaining--
-				}
-				numActive--
 			} else if e := msg.GetCancelled(); e != nil {
 				if _, ok := exitedByJobId[e.JobId]; ok {
 					return errors.Errorf("received multiple terminal events for job %s", e.JobId)
