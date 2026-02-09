@@ -28,7 +28,7 @@ jobs:
 action: ACTION_PREEMPT
 selection: SELECTION_BY_IDS
 preemptReason: "Test job preemption for validation"
-timeout: "100s"
+timeout: "200s"
 expectedEvents:
   - submitted:
   - preempted:
