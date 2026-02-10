@@ -19,11 +19,11 @@ jobs:
             - sleep 600
           resources:
             limits:
-              memory: 128Mi
-              cpu: 0.2
+              memory: 25Mi
+              cpu: 100m
             requests:
-              memory: 128Mi
-              cpu: 0.2
+              memory: 25Mi
+              cpu: 100m
 ---
 action: ACTION_PREEMPT
 selection: SELECTION_BY_IDS
