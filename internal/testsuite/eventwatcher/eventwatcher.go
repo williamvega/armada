@@ -170,41 +170,28 @@ func AssertEvents(ctx context.Context, c chan *api.EventMessage, jobIds map[stri
 				break
 			}
 
-			// Log received event
-			actualType := reflect.TypeOf(actual.Events)
-			i := indexByJobId[actualJobId]
-			var expectedType reflect.Type
-			if i < len(expected) {
-				expectedType = reflect.TypeOf(expected[i].Events)
-			}
-			isTerminal := isTerminalEvent(actual)
-			fmt.Fprintf(os.Stdout, "[AssertEvents] Job %s: received %T (terminal=%v), index=%d/%d, expected=%v, match=%v\n",
-				actualJobId[:8], actual.Events, isTerminal, i, len(expected), expectedType, actualType == expectedType)
-
 			// Record terminated jobs.
-			if isTerminal {
+			if isTerminalEvent(actual) {
 				terminatedByJobId[actualJobId] = true
 			}
 
-			if i < len(expected) && actualType == expectedType {
+			i := indexByJobId[actualJobId]
+			if i < len(expected) && reflect.TypeOf(actual.Events) == reflect.TypeOf(expected[i].Events) {
 				if err := assertEvent(expected[i], actual); err != nil {
 					return err
 				}
 				i++
 				indexByJobId[actualJobId] = i
-				fmt.Fprintf(os.Stdout, "[AssertEvents] Job %s: matched! new index=%d/%d\n", actualJobId[:8], i, len(expected))
 			}
 			if i == len(expected) {
 				numDone++
-				fmt.Fprintf(os.Stdout, "[AssertEvents] Job %s: completed all expected events! (%d/%d jobs done)\n", actualJobId[:8], numDone, len(jobIds))
 				if numDone == len(jobIds) {
 					return nil // We got all the expected events.
 				}
 			}
 
 			// Return an error if the job has exited without us seeing all expected events.
-			if isTerminal && i < len(expected) {
-				fmt.Fprintf(os.Stdout, "[AssertEvents] Job %s: ERROR - terminal event but only at index %d/%d\n", actualJobId[:8], i, len(expected))
+			if isTerminalEvent(actual) && i < len(expected) {
 				return &ErrUnexpectedEvent{
 					jobId:    actualJobId,
 					expected: expected[i],
@@ -264,7 +251,6 @@ func ErrorOnNoActiveJobs(parent context.Context, C chan *api.EventMessage, jobId
 		case msg := <-C:
 			if e := msg.GetSubmitted(); e != nil {
 				numActive++
-				fmt.Fprintf(os.Stdout, "[ErrorOnNoActiveJobs] Job %s: Submitted (active=%d, remaining=%d)\n", e.JobId[:8], numActive, numRemaining)
 			} else if e := msg.GetSucceeded(); e != nil {
 				if _, ok := exitedByJobId[e.JobId]; ok {
 					return errors.Errorf("received multiple terminal events for job %s", e.JobId)
@@ -274,31 +260,26 @@ func ErrorOnNoActiveJobs(parent context.Context, C chan *api.EventMessage, jobId
 					numRemaining--
 				}
 				numActive--
-				fmt.Fprintf(os.Stdout, "[ErrorOnNoActiveJobs] Job %s: Succeeded (active=%d, remaining=%d)\n", e.JobId[:8], numActive, numRemaining)
 			} else if e := msg.GetPreempted(); e != nil {
 				// Preempted jobs will also receive a Failed event.
 				// Only count as exited once.
-				alreadyExited := exitedByJobId[e.JobId]
-				if !alreadyExited {
+				if _, ok := exitedByJobId[e.JobId]; !ok {
 					exitedByJobId[e.JobId] = true
 					if _, ok := jobIds[e.JobId]; ok {
 						numRemaining--
 					}
 					numActive--
 				}
-				fmt.Fprintf(os.Stdout, "[ErrorOnNoActiveJobs] Job %s: Preempted (alreadyExited=%v, active=%d, remaining=%d)\n", e.JobId[:8], alreadyExited, numActive, numRemaining)
 			} else if e := msg.GetFailed(); e != nil {
 				// Failed may come after Preempted for preempted jobs.
 				// Only count as exited once.
-				alreadyExited := exitedByJobId[e.JobId]
-				if !alreadyExited {
+				if _, ok := exitedByJobId[e.JobId]; !ok {
 					exitedByJobId[e.JobId] = true
 					if _, ok := jobIds[e.JobId]; ok {
 						numRemaining--
 					}
 					numActive--
 				}
-				fmt.Fprintf(os.Stdout, "[ErrorOnNoActiveJobs] Job %s: Failed (alreadyExited=%v, active=%d, remaining=%d)\n", e.JobId[:8], alreadyExited, numActive, numRemaining)
 			} else if e := msg.GetCancelled(); e != nil {
 				if _, ok := exitedByJobId[e.JobId]; ok {
 					return errors.Errorf("received multiple terminal events for job %s", e.JobId)
@@ -308,7 +289,6 @@ func ErrorOnNoActiveJobs(parent context.Context, C chan *api.EventMessage, jobId
 					numRemaining--
 				}
 				numActive--
-				fmt.Fprintf(os.Stdout, "[ErrorOnNoActiveJobs] Job %s: Cancelled (active=%d, remaining=%d)\n", e.JobId[:8], numActive, numRemaining)
 			}
 			if numRemaining <= 0 {
 				return errors.New("no jobs active")
