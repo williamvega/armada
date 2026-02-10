@@ -12,26 +12,28 @@ import (
 	"github.com/armadaproject/armada/pkg/client"
 )
 
-// Preempt a job.
-func (a *App) Preempt(queue string, jobSetId string, jobId string, reason string) (outerErr error) {
+// Preempt one or more jobs.
+func (a *App) Preempt(queue string, jobSetId string, jobIds []string, reason string) (outerErr error) {
 	apiConnectionDetails := a.Params.ApiConnectionDetails
 
-	fmt.Fprintf(a.Out, "Requesting preemption of job matching queue: %s, job set: %s, and job Id: %s\n", queue, jobSetId, jobId)
+	fmt.Fprintf(a.Out, "Requesting preemption of %d job(s) matching queue: %s, job set: %s\n", len(jobIds), queue, jobSetId)
 	return client.WithSubmitClient(apiConnectionDetails, func(c api.SubmitClient) error {
 		ctx, cancel := common.ContextWithDefaultTimeout()
 		defer cancel()
 
 		_, err := c.PreemptJobs(ctx, &api.JobPreemptRequest{
-			JobIds:   []string{jobId},
+			JobIds:   jobIds,
 			JobSetId: jobSetId,
 			Queue:    queue,
 			Reason:   reason,
 		})
 		if err != nil {
-			return errors.Wrapf(err, "error preempting job matching queue: %s, job set: %s, and job id: %s", queue, jobSetId, jobId)
+			return errors.Wrapf(err, "error preempting jobs matching queue: %s, job set: %s", queue, jobSetId)
 		}
 
-		fmt.Fprintf(a.Out, "Requested preemption for job %s\n", jobId)
+		for _, jobId := range jobIds {
+			fmt.Fprintf(a.Out, "Requested preemption for job %s\n", jobId)
+		}
 		return nil
 	})
 }
